@@ -142,22 +142,45 @@ end
     @test loc["region"]["startLine"] == 1
 end
 
-@testitem "sarif output: security preset findings carry CWE and security-severity" setup=[CLIHelper] begin
+@testitem "sarif output: security findings carry CWE and security-severity" setup=[CLIHelper] begin
     using JSON
 
-    dir = mktempdir()
-    write(joinpath(dir, "JuliaLint.toml"), "preset = \"security\"\n")
-    write(joinpath(dir, "a.jl"), "f(n) = Vector{Int}(undef, n)\nsock = \"tcp://*:5555\"\n")
+    function sarif_run(config)
+        dir = mktempdir()
+        write(joinpath(dir, "JuliaLint.toml"), config)
+        write(joinpath(dir, "a.jl"), "sock = \"tcp://*:5555\"\ng(n) = ccall((:h, \"libh\"), Int, (Cint,), n)\n")
+        code, out, _ = CLIHelper.run_cli(["--format", "sarif", dir])
+        return code, JSON.parse(out)["runs"][1]
+    end
 
-    code, out, _ = CLIHelper.run_cli(["--format", "sarif", dir])
-    @test code == 0   # both are below error level
+    code, run = sarif_run("preset = \"security\"\n")
+    @test code == 0   # a warning and a note
+    @test Set(r["ruleId"] for r in run["results"]) == Set(["bind_all_interfaces", "ccall_platform_int"])
+    rules = Dict(r["id"] => r["properties"] for r in run["tool"]["driver"]["rules"])
+    @test rules["bind_all_interfaces"]["tags"] == ["security", "external/cwe/cwe-1327"]
+    @test rules["bind_all_interfaces"]["security-severity"] == "5.5"
+    @test rules["ccall_platform_int"]["security-severity"] == "2.0"
+
+    # The score follows the configured severity.
+    code, run = sarif_run("preset = \"security\"\n[rules]\nbind_all_interfaces = \"error\"\n")
+    @test code == 1
+    rules = Dict(r["id"] => r["properties"] for r in run["tool"]["driver"]["rules"])
+    @test rules["bind_all_interfaces"]["security-severity"] == "8.0"
+end
+
+@testitem "sarif output: the default preset has no security rules" setup=[CLIHelper] begin
+    using JSON
+
+    # `index_from_length` reports in `default` but carries no CWE, so it must not
+    # become a security alert.
+    dir = mktempdir()
+    write(joinpath(dir, "Project.toml"), "name = \"P\"\nuuid = \"8a1b2c3d-1111-2222-3333-444455556666\"\nversion = \"0.1.0\"\n")
+    mkpath(joinpath(dir, "src"))
+    write(joinpath(dir, "src", "P.jl"), "module P\nf(A) = sum(A[i] for i in 1:length(A))\nfunction g(A)\n    s = 0\n    for i in 1:length(A)\n        s += A[i]\n    end\n    return s\nend\nend\n")
+    _, out, _ = CLIHelper.run_cli(["--format", "sarif", dir])
     run = JSON.parse(out)["runs"][1]
-    @test Set(r["ruleId"] for r in run["results"]) == Set(["uninitialized_array", "bind_all_interfaces"])
-    rules = Dict(r["id"] => r for r in run["tool"]["driver"]["rules"])
-    @test rules["uninitialized_array"]["properties"]["tags"] == ["security", "external/cwe/cwe-908"]
-    @test rules["uninitialized_array"]["properties"]["security-severity"] == "2.0"
-    @test rules["bind_all_interfaces"]["properties"]["security-severity"] == "5.5"
-    @test rules["bind_all_interfaces"]["helpUri"] == "https://cwe.mitre.org/data/definitions/1327.html"
+    @test "index_from_length" in [r["ruleId"] for r in run["results"]]
+    @test isempty(run["tool"]["driver"]["rules"])
 end
 
 @testitem "output file" setup=[CLIHelper] begin

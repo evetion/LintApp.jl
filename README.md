@@ -149,7 +149,7 @@ independent subtrees set `shadowed_config = "off"`.
 | Key | Default | Description |
 | --- | --- | --- |
 | `config-version` | `1` | The config format version. Absent means `1`. |
-| `preset` | `"default"` | The severity baseline: `"minimal"`, `"default"`, or `"strict"`. |
+| `preset` | `"default"` | The severity baseline: `"minimal"`, `"default"`, `"strict"`, or `"security"`. |
 | `include` | all `.jl` files | Glob patterns selecting the files to lint. |
 | `exclude` | none | Glob patterns excluding files from linting. Wins over `include`. |
 | `[rules]` | — | Per-rule severity and options, applied on top of the preset. |
@@ -184,7 +184,7 @@ on.
 | `minimal` | Only outright breakage: syntax, test item, TOML and config errors, plus include-graph and `const` problems. |
 | `default` | The out-of-the-box behavior. |
 | `strict` | Every rule on, with hints and informational findings promoted to warnings. |
-| `security` | `default` plus the security rules (shell injection, binding to all interfaces, unsafe memory operations, …). |
+| `security` | `default` plus the security rules (command injection, binding to all interfaces, unsafe memory operations, …). |
 
 A preset name **floats** — it tracks the tool rather than pinning a frozen rule
 set, so upgrading `julialint` can change what a preset reports. To keep that

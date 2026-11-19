@@ -233,30 +233,32 @@ const _SARIF_SEVERITY_MAP = Dict{Symbol,String}(
 
 # GitHub code scanning shows a result as a security alert, rated by its rule's
 # `security-severity` (>= 7 high, >= 4 medium, else low). Rules that carry a CWE
-# get one, from their severity in the `security` preset.
-const _SECURITY_SEVERITY = Dict{Symbol,String}(
-    :error       => "8.0",
-    :warning     => "5.5",
-    :information => "2.0",
-    :hint        => "2.0",
+# get one, from the most severe level their findings are reported at.
+const _SECURITY_SEVERITY = Dict{Symbol,Float64}(
+    :error       => 8.0,
+    :warning     => 5.5,
+    :information => 2.0,
+    :hint        => 2.0,
 )
 
+function _rule_cwe(code)
+    rule = get(JuliaWorkspaces.LINT_RULES_BY_ID, code, nothing)
+    return rule !== nothing && hasproperty(rule, :cwe) ? rule.cwe : nothing
+end
+
 function _sarif_security_rules(entries)
-    rules = Dict{String,Any}[]
-    for id in sort!(unique(_rule_id(e[3]) for e in entries))
-        rule = get(JuliaWorkspaces.LINT_RULES_BY_ID, Symbol(id), nothing)
-        cwe = rule !== nothing && hasproperty(rule, :cwe) ? rule.cwe : nothing
-        cwe === nothing && continue
-        push!(rules, Dict{String,Any}(
-            "id"         => id,
-            "helpUri"    => "https://cwe.mitre.org/data/definitions/$cwe.html",
-            "properties" => Dict{String,Any}(
-                "tags"              => ["security", "external/cwe/cwe-$cwe"],
-                "security-severity" => _SECURITY_SEVERITY[rule.severity_security],
-            ),
-        ))
+    score = Dict{Symbol,Float64}()
+    for (_, _, diag, _) in entries
+        _rule_cwe(diag.code) === nothing && continue
+        score[diag.code] = max(get(score, diag.code, 0.0), _SECURITY_SEVERITY[diag.severity])
     end
-    return rules
+    return [Dict{String,Any}(
+                "id"         => string(id),
+                "properties" => Dict{String,Any}(
+                    "tags"              => ["security", "external/cwe/cwe-$(_rule_cwe(id))"],
+                    "security-severity" => string(s),
+                ),
+            ) for (id, s) in sort!(collect(score))]
 end
 
 function _output_sarif(io::IO, entries, root_path::String)
