@@ -231,6 +231,34 @@ const _SARIF_SEVERITY_MAP = Dict{Symbol,String}(
     :hint        => "note",
 )
 
+# GitHub code scanning shows a result as a security alert, rated by its rule's
+# `security-severity` (>= 7 high, >= 4 medium, else low). Rules that carry a CWE
+# get one, from their severity in the `security` preset.
+const _SECURITY_SEVERITY = Dict{Symbol,String}(
+    :error       => "8.0",
+    :warning     => "5.5",
+    :information => "2.0",
+    :hint        => "2.0",
+)
+
+function _sarif_security_rules(entries)
+    rules = Dict{String,Any}[]
+    for id in sort!(unique(_rule_id(e[3]) for e in entries))
+        rule = get(JuliaWorkspaces.LINT_RULES_BY_ID, Symbol(id), nothing)
+        cwe = rule !== nothing && hasproperty(rule, :cwe) ? rule.cwe : nothing
+        cwe === nothing && continue
+        push!(rules, Dict{String,Any}(
+            "id"         => id,
+            "helpUri"    => "https://cwe.mitre.org/data/definitions/$cwe.html",
+            "properties" => Dict{String,Any}(
+                "tags"              => ["security", "external/cwe/cwe-$cwe"],
+                "security-severity" => _SECURITY_SEVERITY[rule.severity_security],
+            ),
+        ))
+    end
+    return rules
+end
+
 function _output_sarif(io::IO, entries, root_path::String)
     results = Dict{String,Any}[]
 
@@ -279,6 +307,7 @@ function _output_sarif(io::IO, entries, root_path::String)
                         "name"           => "julialint",
                         "version"        => _VERSION,
                         "informationUri" => "https://github.com/julia-vscode/LintApp.jl",
+                        "rules"          => _sarif_security_rules(entries),
                     ),
                 ),
                 "originalUriBaseIds" => Dict{String,Any}(

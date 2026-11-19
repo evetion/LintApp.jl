@@ -109,6 +109,11 @@ GitHub Code Scanning keys per-rule suppressions on:
 src/MyPackage.jl:5:5: error: Variable has been assigned but not used. [unused_binding]
 ```
 
+In `sarif` output, rules with a CWE (the security rules) also get an
+`external/cwe/cwe-N` tag and a `security-severity`, so GitHub Code Scanning
+lists their findings as security alerts. Set `preset = "security"` in
+`JuliaLint.toml` to turn those rules on.
+
 ## Configuration
 
 > [!WARNING]
@@ -179,6 +184,7 @@ on.
 | `minimal` | Only outright breakage: syntax, test item, TOML and config errors, plus include-graph and `const` problems. |
 | `default` | The out-of-the-box behavior. |
 | `strict` | Every rule on, with hints and informational findings promoted to warnings. |
+| `security` | `default` plus the security rules (shell injection, binding to all interfaces, unsafe memory operations, …). |
 
 A preset name **floats** — it tracks the tool rather than pinning a frozen rule
 set, so upgrading `julialint` can change what a preset reports. To keep that

@@ -142,6 +142,24 @@ end
     @test loc["region"]["startLine"] == 1
 end
 
+@testitem "sarif output: security preset findings carry CWE and security-severity" setup=[CLIHelper] begin
+    using JSON
+
+    dir = mktempdir()
+    write(joinpath(dir, "JuliaLint.toml"), "preset = \"security\"\n")
+    write(joinpath(dir, "a.jl"), "f(n) = Vector{Int}(undef, n)\nsock = \"tcp://*:5555\"\n")
+
+    code, out, _ = CLIHelper.run_cli(["--format", "sarif", dir])
+    @test code == 0   # both are below error level
+    run = JSON.parse(out)["runs"][1]
+    @test Set(r["ruleId"] for r in run["results"]) == Set(["uninitialized_array", "bind_all_interfaces"])
+    rules = Dict(r["id"] => r for r in run["tool"]["driver"]["rules"])
+    @test rules["uninitialized_array"]["properties"]["tags"] == ["security", "external/cwe/cwe-908"]
+    @test rules["uninitialized_array"]["properties"]["security-severity"] == "2.0"
+    @test rules["bind_all_interfaces"]["properties"]["security-severity"] == "5.5"
+    @test rules["bind_all_interfaces"]["helpUri"] == "https://cwe.mitre.org/data/definitions/1327.html"
+end
+
 @testitem "output file" setup=[CLIHelper] begin
     run_cli, SYNTAX_ERROR = CLIHelper.run_cli, CLIHelper.SYNTAX_ERROR
 
